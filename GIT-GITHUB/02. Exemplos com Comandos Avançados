@@ -1,0 +1,275 @@
+# ⚔️ Git Avançado: Conflitos & Resolução (Merge/Rebase)
+
+Este guia prático cria **conflitos reais** e mostra como resolvê-los usando **merge** e **rebase**. Ideal para treinar em um repositório de teste.
+
+> Pré-requisitos:
+> - Git instalado e configurado (`user.name`, `user.email`)
+> - Conforto com os comandos básicos (init, add, commit, branch, log)
+
+---
+
+## 🧪 0) Preparação do cenário
+
+Crie um repositório de teste e um arquivo base:
+```bash
+mkdir git-conflitos && cd git-conflitos
+git init
+echo "linha 1" > notas.txt
+echo "linha 2" >> notas.txt
+echo "linha 3" >> notas.txt
+git add .
+git commit -m "base: cria notas.txt com 3 linhas"
+git branch -M main
+```
+
+---
+
+## 🧩 A) Conflito com **merge**
+
+### 1) Gerar conflitos em branches diferentes
+Crie uma branch e altere a **mesma linha** de `notas.txt`:
+```bash
+git checkout -b feature/a
+sed -i '' 's/linha 2/linha 2 - alterada na feature A/' notas.txt
+git commit -am "feature A: altera linha 2"
+```
+
+Volte para `main` e altere **a mesma linha** de um jeito diferente:
+```bash
+git checkout main
+sed -i '' 's/linha 2/linha 2 - alterada na main/' notas.txt
+git commit -am "main: altera linha 2"
+```
+
+### 2) Tentar mesclar e ver o conflito
+```bash
+git merge feature/a
+```
+Saída esperada (resumo):
+```
+Auto-merging notas.txt
+CONFLICT (content): Merge conflict in notas.txt
+Automatic merge failed; fix conflicts and then commit the result.
+```
+
+### 3) Inspecionar conflito
+```bash
+git status
+# mostra arquivos com conflito
+git diff
+# mostra marcadores de conflito no arquivo
+```
+
+Abra o `notas.txt` e você verá algo como:
+```
+linha 1
+<<<<<<< HEAD
+linha 2 - alterada na main
+=======
+linha 2 - alterada na feature A
+>>>>>>> feature/a
+linha 3
+```
+
+### 4) Resolver conflito manualmente
+Edite `notas.txt` para o conteúdo desejado (exemplo de resolução):
+```
+linha 1
+linha 2 - alterada (merge das ideias)
+linha 3
+```
+
+Marque como resolvido e finalize o merge:
+```bash
+git add notas.txt
+git commit -m "merge: resolve conflito em notas.txt"
+```
+
+Dica: você pode usar uma ferramenta gráfica se tiver (`git mergetool`).
+
+---
+
+## 🔁 B) Conflito com **rebase**
+
+Vamos criar outro conflito usando rebase (reaplicar commits por cima de outro histórico).
+
+### 1) Preparar novas divergências
+Crie uma nova branch a partir de `main`:
+```bash
+git checkout -b feature/b
+echo "linha 4 - feature B" >> notas.txt
+git commit -am "feature B: adiciona linha 4"
+```
+
+Volte em `main` e crie mudança conflitante na **mesma região**:
+```bash
+git checkout main
+echo "linha 4 - main" >> notas.txt
+git commit -am "main: adiciona linha 4 diferente"
+```
+
+### 2) Rebase da branch feature/b sobre main
+```bash
+git checkout feature/b
+git rebase main
+```
+Saída típica:
+```
+Applying: feature B: adiciona linha 4
+CONFLICT (content): Merge conflict in notas.txt
+```
+
+### 3) Resolver conflito durante rebase
+Edite `notas.txt`, escolha a resolução final (exemplo):
+```
+linha 1
+linha 2 - alterada (merge das ideias)
+linha 3
+linha 4 - resolução rebase
+```
+
+Sinalize resolução e continue o rebase:
+```bash
+git add notas.txt
+git rebase --continue
+```
+Se quiser **pular** um commit problemático:
+```bash
+git rebase --skip
+```
+Para **abortar** e voltar ao estado anterior:
+```bash
+git rebase --abort
+```
+
+Após completar, mescle em `main` (fast-forward):
+```bash
+git checkout main
+git merge feature/b
+```
+
+---
+
+## 🌿 C) Rebase interativo (limpar histórico)
+
+Use para **reorganizar**, **squash** (fundir) e **renomear** mensagens de commit.
+
+Crie alguns commits “ruins” na branch:
+```bash
+git checkout -b feature/hist
+echo "a" >> dev.txt && git add . && git commit -m "WIP"
+echo "b" >> dev.txt && git add . && git commit -m "fix"
+echo "c" >> dev.txt && git add . && git commit -m "mais coisas"
+```
+
+Inicie um rebase interativo dos últimos 3 commits:
+```bash
+git rebase -i HEAD~3
+```
+No editor, altere por exemplo para:
+```
+pick <hash1> WIP
+squash <hash2> fix
+reword <hash3> mais coisas
+```
+- `squash`: funde o commit com o anterior
+- `reword`: altera a mensagem de commit
+
+Finalize salvando. Ao final, sua branch terá um histórico mais limpo.
+
+> ⚠️ Evite reescrever histórico já **publicado** (empurrado para o remoto) em branches compartilhadas. Combine com o time.
+
+---
+
+## 🎯 D) Cherry-pick com conflito (trazer commit específico)
+
+Crie uma situação onde você quer **trazer um commit específico** de outra branch e lida com conflitos:
+
+```bash
+git checkout -b feature/c
+echo "config=ABC" > app.conf
+git add app.conf
+git commit -m "feat: adiciona config ABC"
+```
+
+Volte para `main` e crie um commit que mexe no mesmo arquivo:
+```bash
+git checkout main
+echo "config=XYZ" > app.conf
+git add app.conf
+git commit -m "chore: define config XYZ"
+```
+
+Agora, faça cherry-pick do commit da feature (pegue o hash real do commit “config ABC”):
+```bash
+git cherry-pick <HASH_DO_COMMIT_ABC>
+```
+Se houver conflito, resolva editando `app.conf`, depois:
+```bash
+git add app.conf
+git cherry-pick --continue
+```
+Abortar se necessário:
+```bash
+git cherry-pick --abort
+```
+
+---
+
+## 🧹 E) Reverter e resetar (quando deu ruim)
+
+### Reverter um commit (gera novo commit “anti-mudança”):
+```bash
+git revert <HASH>
+```
+> Seguro em histórico já publicado.
+
+### Resetar (mover o ponteiro da branch) — **perigoso**:
+- Soft (mantém mudanças no stage):
+```bash
+git reset --soft <HASH>
+```
+- Mixed (default, mantém mudanças na working tree):
+```bash
+git reset <HASH>
+```
+- Hard (descarta tudo até o hash) **⚠️ cuidado**:
+```bash
+git reset --hard <HASH>
+```
+
+---
+
+## 🧭 Dicas práticas 
+
+- Antes de iniciar um merge/rebase, **atualize sua branch**: `git fetch` + `git pull --rebase` (ou `git pull`).
+- Em PRs no GitHub com conflitos, você pode usar o botão **Resolve conflicts** no site ou resolver localmente na branch do PR e dar `git push`.
+- Padronize mensagens de commit (ex.: Conventional Commits: `feat:`, `fix:`, `docs:`…).
+- Prefira **rebase** para manter histórico linear em branches de feature; prefira **merge** em branches protegidas/compartilhadas.
+- Atalhos úteis:
+  - `git log --oneline --graph --decorate --all`
+  - `git status`
+  - `git diff` / `git difftool`
+  - `git restore --staged <arquivo>` para tirar do stage
+  - `git checkout -- <arquivo>` para descartar mudanças locais no arquivo (⚠️ cuidado)
+
+---
+
+# 💻 Usando GitHub Codespaces para Praticar Conflitos
+
+Você pode simular e resolver conflitos de **merge** e **rebase** diretamente no **GitHub Codespaces**, sem precisar configurar nada localmente.
+
+## Como abrir um Codespace
+
+1. Acesse o repositório no GitHub (ex.: `git-conflitos`).
+2. Clique em **Code** → aba **Codespaces**.
+3. Clique em **Create codespace on main**.
+
+Isso abrirá um VS Code no navegador, já com Git instalado.
+
+## Vantagens
+- Ambiente pronto sem instalar nada localmente.
+- Editor com destaque de conflitos integrado.
+- Terminal para rodar todos os comandos de `merge`, `rebase`, `cherry-pick` etc.
+
+Todos os exercícios descritos neste guia podem ser realizados dentro do terminal do Codespace, aproveitando o editor para visualizar e resolver conflitos de forma interativa.
